@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>System Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#0f0f0f;--surface:#1a1a1a;--card:#222;--border:#333;
+  --text:#e8e8e8;--muted:#888;--dim:#555;
+  --accent:#6366f1;--success:#22c55e;--warning:#f59e0b;--danger:#ef4444;--pro:#a78bfa;
+  --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px 12px 32px}
+.stat-row{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px}
+.stat{background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 10px;text-align:center}
+.stat-n{font-size:26px;font-weight:600;line-height:1}
+.stat-l{font-size:11px;color:var(--muted);margin-top:4px;letter-spacing:.03em}
+.tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px;-ms-overflow-style:none;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{font-size:12px;font-weight:500;padding:7px 16px;border-radius:99px;border:0.5px solid var(--border);background:var(--card);color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0}
+.tab.on{background:var(--accent);color:#fff;border-color:transparent}
+.panel{display:none}.panel.show{display:block}
+.sec-label{font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;padding:0 2px}
+.card{background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px}
+.task-row{display:flex;align-items:center;gap:12px;padding:15px 14px;border-bottom:0.5px solid var(--border)}
+.task-row:last-child{border-bottom:none}
+.task-info{flex:1;min-width:0}
+.task-name{font-size:13px;font-weight:500;font-family:ui-monospace,monospace;color:var(--text)}
+.task-sched{font-size:11px;color:var(--muted);margin-top:3px}
+.toggle{position:relative;width:48px;height:28px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.slider{position:absolute;inset:0;border-radius:99px;background:var(--border);cursor:pointer;transition:background .2s}
+.slider:before{content:'';position:absolute;width:22px;height:22px;border-radius:50%;background:#fff;top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.toggle input:checked+.slider{background:var(--success)}
+.toggle input:checked+.slider:before{transform:translateX(20px)}
+.proc-row{display:flex;align-items:center;gap:10px;padding:13px 14px;border-bottom:0.5px solid var(--border)}
+.proc-row:last-child{border-bottom:none}
+.proc-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.proc-name{font-size:14px;font-weight:500;flex:1}
+.proc-meta{font-size:12px;color:var(--muted)}
+.chip-row{display:flex;flex-wrap:wrap;gap:5px;padding:10px 14px;border-top:0.5px solid var(--border)}
+.chip{font-size:11px;padding:3px 9px;border-radius:99px;background:var(--surface);color:var(--muted);border:0.5px solid var(--border);font-family:ui-monospace,monospace}
+.proj-row{display:flex;align-items:center;gap:10px;padding:13px 14px;border-bottom:0.5px solid var(--border);cursor:pointer;color:inherit}
+.proj-row:last-child{border-bottom:none}
+.proj-row:active{background:var(--surface)}
+.proj-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.proj-name{font-size:13px;font-weight:500;font-family:ui-monospace,monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-date{font-size:11px;color:var(--dim)}
+.skill-row{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:0.5px solid var(--border)}
+.skill-row:last-child{border-bottom:none}
+.skill-name{font-size:12px;font-family:ui-monospace,monospace;flex:1;color:var(--text)}
+.skill-date{font-size:11px;color:var(--dim)}
+.action-row{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px}
+.action-btn{background:var(--card);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 8px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
+.action-btn:active{background:var(--surface);transform:scale(.97)}
+.action-btn i{font-size:17px}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--accent);color:#fff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:99px;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;z-index:99}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.done-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--surface);color:var(--dim);border:0.5px solid var(--border)}
+</style>
+</head>
+<body>
+
+<div class="stat-row">
+  <div class="stat"><div class="stat-n" style="color:#6366f1">11</div><div class="stat-l">Claude procs</div></div>
+  <div class="stat"><div class="stat-n" style="color:#22c55e">1</div><div class="stat-l">Ollama proc</div></div>
+  <div class="stat"><div class="stat-n" style="color:#e8e8e8">4</div><div class="stat-l">Scheduled tasks</div></div>
+  <div class="stat"><div class="stat-n" style="color:#555">0</div><div class="stat-l">Active tasks</div></div>
+</div>
+
+<div class="tabs">
+  <div class="tab on" onclick="showPanel('tasks',this)">Tasks</div>
+  <div class="tab" onclick="showPanel('procs',this)">Processes</div>
+  <div class="tab" onclick="showPanel('projects',this)">Projects</div>
+  <div class="tab" onclick="showPanel('skills',this)">Skills</div>
+</div>
+
+<div class="panel show" id="panel-tasks">
+  <div class="sec-label">Scheduled tasks</div>
+  <div class="card" id="task-list"></div>
+</div>
+
+<div class="panel" id="panel-procs">
+  <div class="sec-label">Claude</div>
+  <div class="card">
+    <div class="proc-row"><div class="proc-dot" style="background:#6366f1"></div><div class="proc-name">11 processes</div><div class="proc-meta">~2.0 GB RAM</div></div>
+    <div class="proc-row"><div class="proc-dot" style="background:#6366f1"></div><div class="proc-name">Peak PID 23712</div><div class="proc-meta">28.9s CPU · 392 MB</div></div>
+    <div class="proc-row"><div class="proc-dot" style="background:#6366f1"></div><div class="proc-name">PID 22352</div><div class="proc-meta">18.0s CPU · 353 MB</div></div>
+    <div class="proc-row"><div class="proc-dot" style="background:#444"></div><div class="proc-name">8 lighter procs</div><div class="proc-meta">&lt;14s CPU each</div></div>
+  </div>
+  <div class="sec-label">Ollama</div>
+  <div class="card">
+    <div class="proc-row"><div class="proc-dot" style="background:#22c55e"></div><div class="proc-name">PID 25404 — idle</div><div class="proc-meta">0.5s CPU · 32 MB</div></div>
+    <div class="chip-row">
+      <span class="chip">llama3 4.7GB</span>
+      <span class="chip">llama3.2-vision 7.8GB</span>
+      <span class="chip">mixtral 26GB</span>
+      <span class="chip">qwen2.5-coder 4.7GB</span>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="panel-projects">
+  <div class="sec-label">D:\GODOT — recent activity</div>
+  <div class="card" id="proj-list"></div>
+</div>
+
+<div class="panel" id="panel-skills">
+  <div class="sec-label">21 skills — newest first</div>
+  <div class="card" id="skill-list"></div>
+</div>
+
+<div class="action-row">
+  <div class="action-btn" onclick="cmd('Refresh the system dashboard — re-run diagnostics on Claude/Ollama processes and scheduled tasks, then rebuild the widget with live data')"><i class="ti ti-refresh"></i> Refresh</div>
+  <div class="action-btn" onclick="cmd('Full status report: all scheduled tasks with next run times, Claude and Ollama process summary, and last harvest log entry')"><i class="ti ti-chart-bar"></i> Full report</div>
+  <div class="action-btn" onclick="cmd('Stop all running awesome-godot miner processes and confirm they are stopped')"><i class="ti ti-player-stop"></i> Stop miner</div>
+  <div class="action-btn" onclick="cmd('What Godot project should I work on next based on recent activity and project status?')"><i class="ti ti-bulb"></i> What next?</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const tasks=[
+  {id:'awesome-godot-miner',sched:'Daily 8:02 AM',on:false},
+  {id:'template-iteration-cycle',sched:'Every 3 hours',on:false},
+  {id:'template-meta-review',sched:'Mon 9:00 AM',on:false},
+  {id:'remind-godot-miner-sheet-webhook',sched:'One-time',done:true},
+];
+const projects=[
+  {name:'katamari-breaker',date:'today',color:'#6366f1'},
+  {name:'pokemon-like',date:'today',color:'#6366f1'},
+  {name:'awesome-godot-mining',date:'today',color:'#f59e0b'},
+  {name:'arena-run',date:'today',color:'#6366f1'},
+  {name:'cutscene-fight',date:'yesterday',color:'#a78bfa'},
+  {name:'orchestrator',date:'yesterday',color:'#f59e0b'},
+  {name:'asset-importer',date:'Jun 26',color:'#f59e0b'},
+  {name:'barn-breaker',date:'Jun 23',color:'#6366f1'},
+  {name:'templates',date:'Jun 22',color:'#22c55e'},
+  {name:'trippy-playground',date:'Jun 21',color:'#a78bfa'},
+  {name:'pip-the-parakeet',date:'Jun 21',color:'#6366f1'},
+];
+const skills=['godot-custom-gravity-zones','cyclops_level_builder','godot-navmesh-crowd-navigation','godot-procedural-scatter','godot-terrain3d-runtime-queries','godot-ui-animation-recipes','godot-additive-property-shake','godot-quest-objective-system','godot-scene-transitions','godot-llm-npc-constrained-output','godot-spritesheet-to-animation','godot-demo-recipe-index','godot-shader-material-recipes','godot-character-ability-composition','godot-gut-test-loop','godot-inventory-system','godot-miner','godot-input-device-remap','show-image','godot-hitbox-hurtbox-health','godot-behavior-tree-ai'];
+const skillDates=['Jun 28','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 26','Jun 26'];
+
+document.getElementById('task-list').innerHTML=tasks.map((t,i)=>`
+  <div class="task-row" style="${t.done?'opacity:.35':''}">
+    <div class="task-info">
+      <div class="task-name">${t.id}</div>
+      <div class="task-sched">${t.sched}</div>
+    </div>
+    ${t.done?'<span class="done-badge">done</span>':`
+    <label class="toggle" aria-label="Toggle ${t.id}">
+      <input type="checkbox" ${t.on?'checked':''} onchange="toggleTask(${i},this.checked)">
+      <span class="slider"></span>
+    </label>`}
+  </div>`).join('');
+
+document.getElementById('proj-list').innerHTML=projects.map(p=>`
+  <div class="proj-row" onclick="cmd('Brief status on the ${p.name} project at D:\\\\GODOT\\\\${p.name}')">
+    <div class="proj-dot" style="background:${p.color}"></div>
+    <span class="proj-name">${p.name}</span>
+    <span class="proj-date">${p.date}</span>
+    <i class="ti ti-chevron-right" style="font-size:14px;color:#555"></i>
+  </div>`).join('');
+
+document.getElementById('skill-list').innerHTML=skills.map((s,i)=>`
+  <div class="skill-row">
+    <span class="skill-name">${s}</span>
+    <span class="skill-date">${skillDates[i]}</span>
+  </div>`).join('');
+
+function toggleTask(i,checked){
+  tasks[i].on=checked;
+  const action=checked?'Enable':'Disable';
+  const msg=action+' scheduled task "'+tasks[i].id+'" — set enabled='+checked+' via the scheduled tasks MCP';
+  copyAndToast(msg);
+}
+
+function cmd(text){copyAndToast(text)}
+
+function copyAndToast(text){
+  navigator.clipboard.writeText(text).then(()=>{
+    toast('Copied — paste into Claude chat');
+  }).catch(()=>{
+    toast('Copy failed — try long-pressing');
+  });
+}
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function showPanel(id,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('show'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('panel-'+id).classList.add('show');
+  el.classList.add('on');
+}
+</script>
+</body>
+</html>
