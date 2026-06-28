@@ -60,6 +60,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--accent);color:#fff;font-size:13px;font-weight:500;padding:10px 20px;border-radius:99px;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;z-index:99}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .done-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--surface);color:var(--dim);border:0.5px solid var(--border)}
+
+/* ── Importer tab ── */
+.pipe-header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.pipe-phase{font-size:11px;font-weight:600;color:var(--muted);flex:1}
+.pipe-pct{font-size:13px;font-weight:600;color:var(--accent)}
+.progress-track{height:4px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:16px}
+.progress-fill{height:100%;border-radius:99px;background:var(--accent);transition:width .4s}
+.chunk-row{display:flex;align-items:flex-start;gap:12px;padding:14px;border-bottom:0.5px solid var(--border);cursor:pointer}
+.chunk-row:last-child{border-bottom:none}
+.chunk-row:active{background:var(--surface)}
+.chunk-left{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;padding-top:2px}
+.chunk-num{width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chunk-line{width:2px;flex:1;min-height:12px;border-radius:99px}
+.chunk-body{flex:1;min-width:0}
+.chunk-name{font-size:13px;font-weight:600;color:var(--text)}
+.chunk-desc{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5}
+.chunk-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;margin-top:5px}
+.chunk-arrow{font-size:14px;color:var(--dim);align-self:center;flex-shrink:0}
+
+/* drill-down overlay */
+#drill{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50;align-items:flex-end}
+#drill.show{display:flex}
+.drill-card{background:var(--card);border-radius:16px 16px 0 0;padding:20px 16px 32px;width:100%;max-height:80vh;overflow-y:auto}
+.drill-title{font-size:16px;font-weight:700;margin-bottom:4px}
+.drill-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+.drill-section{font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin:12px 0 6px}
+.drill-item{font-size:12px;color:var(--muted);padding:4px 0;line-height:1.5;display:flex;gap:8px}
+.drill-item:before{content:'·';color:var(--dim);flex-shrink:0}
+.drill-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.drill-btn{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 8px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;text-align:center}
+.drill-btn.primary{background:var(--accent);color:#fff;border-color:transparent}
+.drill-btn:active{opacity:.8}
+.drill-close{float:right;font-size:20px;color:var(--dim);cursor:pointer;line-height:1;margin-top:-2px}
 </style>
 </head>
 <body>
@@ -76,13 +109,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
   <div class="tab" onclick="showPanel('procs',this)">Processes</div>
   <div class="tab" onclick="showPanel('projects',this)">Projects</div>
   <div class="tab" onclick="showPanel('skills',this)">Skills</div>
+  <div class="tab" onclick="showPanel('importer',this)">Importer</div>
 </div>
 
+<!-- TASKS -->
 <div class="panel show" id="panel-tasks">
   <div class="sec-label">Scheduled tasks</div>
   <div class="card" id="task-list"></div>
 </div>
 
+<!-- PROCESSES -->
 <div class="panel" id="panel-procs">
   <div class="sec-label">Claude</div>
   <div class="card">
@@ -103,14 +139,47 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
   </div>
 </div>
 
+<!-- PROJECTS -->
 <div class="panel" id="panel-projects">
   <div class="sec-label">D:\GODOT — recent activity</div>
   <div class="card" id="proj-list"></div>
 </div>
 
+<!-- SKILLS -->
 <div class="panel" id="panel-skills">
   <div class="sec-label">21 skills — newest first</div>
   <div class="card" id="skill-list"></div>
+</div>
+
+<!-- IMPORTER -->
+<div class="panel" id="panel-importer">
+  <div class="pipe-header">
+    <span class="pipe-phase">Asset Importer — 7 chunks</span>
+    <span class="pipe-pct" id="pipe-pct">0%</span>
+  </div>
+  <div class="progress-track"><div class="progress-fill" id="pipe-bar" style="width:0%"></div></div>
+  <div class="card" id="chunk-list"></div>
+  <div style="margin-top:10px">
+    <div class="action-btn" style="width:100%" onclick="cmd('Start building asset importer chunk 0: extend the cmd protocol in plugin.gd to support response files and new commands (get_context, import_asset, set_property, apply_texture, apply_audio, apply_mesh, add_anim_track). Also upgrade dock.gd to show import status.')"><i class="ti ti-player-play"></i> &nbsp;Start C0 — Foundation ↗</div>
+  </div>
+</div>
+
+<!-- DRILL-DOWN -->
+<div id="drill" onclick="closeDrill(event)">
+  <div class="drill-card" id="drill-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div class="drill-title" id="drill-title"></div>
+        <div class="drill-sub" id="drill-sub"></div>
+      </div>
+      <span class="drill-close" onclick="hideDrill()">&#x2715;</span>
+    </div>
+    <div class="drill-section">Delivers</div>
+    <div id="drill-delivers"></div>
+    <div class="drill-section">Files touched</div>
+    <div id="drill-files"></div>
+    <div class="drill-actions" id="drill-actions"></div>
+  </div>
 </div>
 
 <div class="action-row">
@@ -145,6 +214,124 @@ const projects=[
 const skills=['godot-custom-gravity-zones','cyclops_level_builder','godot-navmesh-crowd-navigation','godot-procedural-scatter','godot-terrain3d-runtime-queries','godot-ui-animation-recipes','godot-additive-property-shake','godot-quest-objective-system','godot-scene-transitions','godot-llm-npc-constrained-output','godot-spritesheet-to-animation','godot-demo-recipe-index','godot-shader-material-recipes','godot-character-ability-composition','godot-gut-test-loop','godot-inventory-system','godot-miner','godot-input-device-remap','show-image','godot-hitbox-hurtbox-health','godot-behavior-tree-ai'];
 const skillDates=['Jun 28','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 27','Jun 26','Jun 26'];
 
+const STATUS={pending:'pending',active:'active',done:'done'};
+const chunks=[
+  {
+    id:'C0',name:'Foundation',
+    status:STATUS.pending,
+    desc:'Extend cmd protocol + response file pattern + dock upgrade',
+    delivers:['New commands: get_context, import_asset, set_property, apply_texture, apply_audio, apply_mesh, add_anim_track','Response file: .asset_importer_response.json written by plugin, read by Claude','Dock shows import log, not just plugin list'],
+    files:['addons/asset_importer/plugin.gd','addons/asset_importer/dock.gd'],
+    startPrompt:'Start building asset importer chunk 0: extend the cmd protocol in plugin.gd to support a response file (.asset_importer_response.json) and new commands: get_context (writes scene tree + nodes + existing assets to response file), import_asset <path> (triggers rescan of a specific file), set_property <node_path> <property> <value>, apply_texture <node_path> <res_path>, apply_audio <node_path> <res_path>, apply_mesh <node_path> <res_path>, add_anim_track <node_path> <anim> <track_type> <track_path>. Upgrade dock.gd to show a scrollable import log (last 20 actions) in addition to installed plugins.'
+  },
+  {
+    id:'C1',name:'Context Reader',
+    status:STATUS.pending,
+    desc:'Plugin reads + exports scene tree, node types, existing assets to Claude',
+    delivers:['get_context cmd writes full scene hierarchy to response file','Includes: node paths, types, current texture/audio/mesh assignments','Also lists all files under assets/ and addons/'],
+    files:['addons/asset_importer/plugin.gd','addons/asset_importer/context_reader.gd'],
+    startPrompt:'Build asset importer chunk 1 (Context Reader): implement the get_context command in plugin.gd. It should traverse the entire scene tree recursively and write a JSON file at .asset_importer_response.json containing: {scene_name, nodes: [{path, type, properties: {texture, mesh, audio_stream, animation_player_anims}}], existing_assets: [list of files under res://assets/], installed_plugins: [list]}. Create a new context_reader.gd helper that plugin.gd calls. Prerequisite: C0 must be done first.'
+  },
+  {
+    id:'C2',name:'Discovery',
+    status:STATUS.pending,
+    desc:'Claude reads context, recommends assets from catalog + Kenney/OGA',
+    delivers:['suggest command: Claude analyzes context file and picks best-fit assets','Expanded plugin_registry.json with Kenney.nl packs (tagged by genre/type)','Writes .asset_importer_suggestions.json with ranked picks + install commands'],
+    files:['tools/plugin_registry.json','tools/asset_catalog.json (new)','tools/suggest.ps1 (new)'],
+    startPrompt:'Build asset importer chunk 2 (Discovery): 1) Create tools/asset_catalog.json cataloging Kenney.nl asset packs with tags (platformer, topdown, RPG, UI, audio, etc.) and their direct zip URLs. 2) Create tools/suggest.ps1 that reads .asset_importer_response.json context and outputs .asset_importer_suggestions.json — a ranked list of recommended assets with name, source, url, tags, and the install_asset.ps1 command to fetch each. 3) Add a suggest command to plugin.gd cmd protocol that triggers a rescan after assets are dropped in.'
+  },
+  {
+    id:'C3',name:'Import Pipeline',
+    status:STATUS.pending,
+    desc:'Extend PS1 for Kenney.nl, OpenGameArt, batch imports from suggestion file',
+    delivers:['install_asset.ps1 -Kenney <pack-name> shorthand','Batch mode: reads suggestions file and installs all accepted picks','Progress log written during batch so dock can show live status'],
+    files:['tools/install_asset.ps1','tools/batch_import.ps1 (new)'],
+    startPrompt:'Build asset importer chunk 3 (Import Pipeline): 1) Add -Kenney <pack-slug> param to install_asset.ps1 that resolves to the correct kenney.nl zip URL and calls Install-RawAssets. 2) Create tools/batch_import.ps1 that reads .asset_importer_suggestions.json and installs all items where accepted=true, writing progress to .asset_importer_log after each. 3) Add -DryRun switch that lists what would be installed without downloading.'
+  },
+  {
+    id:'C4',name:'Apply → Nodes',
+    status:STATUS.pending,
+    desc:'Wire assets to scene nodes via set_property / apply_texture / apply_audio / apply_mesh',
+    delivers:['set_property cmd: set any Godot property on a node by path','apply_texture/audio/mesh: load resource and assign to correct property slot','Dock shows confirmation of each applied property'],
+    files:['addons/asset_importer/plugin.gd','addons/asset_importer/applier.gd (new)'],
+    startPrompt:'Build asset importer chunk 4 (Apply to Nodes): create addons/asset_importer/applier.gd with functions handle_set_property(node_path, property, value), handle_apply_texture(node_path, res_path), handle_apply_audio(node_path, res_path), handle_apply_mesh(node_path, res_path). Each should: find the node via get_node_or_null on the edited scene root, load the resource with load(), assign to the correct property (Sprite2D.texture, MeshInstance3D.mesh, AudioStreamPlayer.stream, etc.), then call EditorInterface.save_scene(). Wire these into plugin.gd _handle_cmd() and log each action to the dock.'
+  },
+  {
+    id:'C5',name:'Apply → Animations',
+    status:STATUS.pending,
+    desc:'AnimationPlayer track commands + spritesheet binding',
+    delivers:['add_anim_track cmd: add property/method tracks to named animations','set_sprite_frames: bind spritesheet with hframes/vframes to AnimatedSprite2D','create_anim: create a new animation clip on an AnimationPlayer'],
+    files:['addons/asset_importer/applier.gd','addons/asset_importer/anim_helper.gd (new)'],
+    startPrompt:'Build asset importer chunk 5 (Apply to Animations): create addons/asset_importer/anim_helper.gd with: handle_add_anim_track(node_path, anim_name, track_type, track_path, keyframes_json), handle_set_sprite_frames(node_path, spritesheet_res_path, hframes, vframes, anim_name, fps), handle_create_anim(node_path, anim_name, length). These should find the AnimationPlayer/AnimatedSprite2D on the node, create/modify animations using the Animation API, and save. Wire into plugin.gd cmd handler and log.'
+  },
+  {
+    id:'C6',name:'Apply → States',
+    status:STATUS.pending,
+    desc:'Per-state asset assignment for LimboAI / custom FSMs',
+    delivers:['State context reader: lists all states + their current asset assignments','apply_to_state cmd: assign texture/audio/anim to a named state node','Works with LimboAI BTTask nodes and custom _state_machine.gd patterns'],
+    files:['addons/asset_importer/applier.gd','addons/asset_importer/state_helper.gd (new)'],
+    startPrompt:'Build asset importer chunk 6 (Apply to States): create addons/asset_importer/state_helper.gd. It should: 1) read state machine nodes (nodes in group \'states\' or children of a node named StateMachine/FSM/LimboAI BTTask), 2) implement handle_apply_to_state(state_name, asset_type, res_path) which finds the matching state node and sets the appropriate property, 3) implement handle_get_states(node_path) which writes available states + their assets to the response file. Wire into plugin.gd and log.'
+  },
+];
+
+const statusStyle={
+  done:{bg:'#166534',color:'#4ade80',label:'Done',lineBg:'#166534'},
+  active:{bg:'#1e3a5f',color:'#60a5fa',label:'In progress',lineBg:'#1e3a5f'},
+  pending:{bg:'#2a2a2a',color:'#555',label:'Pending',lineBg:'#2a2a2a'},
+};
+
+function renderChunks(){
+  const done=chunks.filter(c=>c.status==='done').length;
+  const pct=Math.round(done/chunks.length*100);
+  document.getElementById('pipe-pct').textContent=pct+'%';
+  document.getElementById('pipe-bar').style.width=pct+'%';
+  const list=document.getElementById('chunk-list');
+  list.innerHTML=chunks.map((c,i)=>{
+    const s=statusStyle[c.status];
+    const isLast=i===chunks.length-1;
+    return `<div class="chunk-row" onclick="openDrill(${i})">
+      <div class="chunk-left">
+        <div class="chunk-num" style="background:${s.bg};color:${s.color}">${c.id.replace('C','')}</div>
+        ${!isLast?`<div class="chunk-line" style="background:${s.lineBg}"></div>`:''}
+      </div>
+      <div class="chunk-body">
+        <div class="chunk-name">${c.name}</div>
+        <div class="chunk-desc">${c.desc}</div>
+        <span class="chunk-badge" style="background:${s.bg};color:${s.color}">${s.label}</span>
+      </div>
+      <div class="chunk-arrow"><i class="ti ti-chevron-right"></i></div>
+    </div>`;
+  }).join('');
+}
+
+function openDrill(i){
+  const c=chunks[i];
+  const s=statusStyle[c.status];
+  document.getElementById('drill-title').textContent=c.id+' — '+c.name;
+  document.getElementById('drill-sub').textContent=c.desc;
+  document.getElementById('drill-delivers').innerHTML=c.delivers.map(d=>`<div class="drill-item">${d}</div>`).join('');
+  document.getElementById('drill-files').innerHTML=c.files.map(f=>`<div class="drill-item" style="font-family:ui-monospace,monospace;font-size:11px">${f}</div>`).join('');
+  const prevDone=i===0||chunks[i-1].status==='done';
+  document.getElementById('drill-actions').innerHTML=`
+    <div class="drill-btn" onclick="hideDrill()">Close</div>
+    <div class="drill-btn primary" onclick="startChunk(${i})">${c.status==='done'?'Redo':'Start'} ${c.id} ↗</div>`;
+  document.getElementById('drill').classList.add('show');
+}
+
+function startChunk(i){
+  hideDrill();
+  copyAndToast(chunks[i].startPrompt);
+}
+
+function closeDrill(e){
+  if(e.target===document.getElementById('drill'))hideDrill();
+}
+function hideDrill(){
+  document.getElementById('drill').classList.remove('show');
+}
+
+renderChunks();
+
 document.getElementById('task-list').innerHTML=tasks.map((t,i)=>`
   <div class="task-row" style="${t.done?'opacity:.35':''}">
     <div class="task-info">
@@ -174,8 +361,7 @@ document.getElementById('skill-list').innerHTML=skills.map((s,i)=>`
 
 function toggleTask(i,checked){
   tasks[i].on=checked;
-  const action=checked?'Enable':'Disable';
-  const msg=action+' scheduled task "'+tasks[i].id+'" — set enabled='+checked+' via the scheduled tasks MCP';
+  const msg=(checked?'Enable':'Disable')+' scheduled task "'+tasks[i].id+'" — set enabled='+checked+' via the scheduled tasks MCP';
   copyAndToast(msg);
 }
 
