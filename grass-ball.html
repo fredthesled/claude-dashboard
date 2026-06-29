@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Wooden Ball · Grass</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a1808; }
+canvas { display: block; touch-action: none; cursor: grab; }
+canvas:active { cursor: grabbing; }
+#hint {
+  position: fixed; bottom: 18px; left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,0.45);
+  font: 12px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  pointer-events: none; white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+  animation: fadeHint 5s 1.5s ease forwards;
+}
+@keyframes fadeHint { 0%,50%{opacity:1} 100%{opacity:0} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">Drag ball · ← → to roll · Space / ↑ to jump</div>
+<script>
+'use strict';
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+let W, H, GY; // canvas size + ground Y
+
+function resize() {
+  W = C.width  = window.innerWidth;
+  H = C.height = window.innerHeight;
+  GY = Math.round(H * 0.67);
+}
+resize();
+
+/* ══════════════════════════════════════════════════
+   WOOD TEXTURE  —  pre-rendered to offscreen canvas
+   ══════════════════════════════════════════════════ */
+let WOOD = null;
+
+function buildWood(r) {
+  const sz   = Math.round(r * 2) + 10;
+  const half = sz / 2;
+  const oc   = document.createElement('canvas');
+  oc.width   = oc.height = sz;
+  const g    = oc.getContext('2d');
+
+  g.save();
+  g.translate(half, half);
+
+  // circular clip
+  g.beginPath();
+  g.arc(0, 0, r, 0, Math.PI * 2);
+  g.clip();
+
+  // base warm brown
+  g.fillStyle = '#7c4e2a';
+  g.fillRect(-r, -r, r * 2, r * 2);
+
+  // annual rings — center offset for realism
+  const ox = r * 0.13, oy = r * 0.09;
+  const rings = [
+    [1.02,'hsl(21,50%,19%)'], [0.92,'hsl(24,53%,25%)'],
+    [0.83,'hsl(20,51%,22%)'], [0.74,'hsl(26,57%,29%)'],
+    [0.65,'hsl(22,53%,24%)'], [0.56,'hsl(27,59%,33%)'],
+    [0.48,'hsl(23,55%,27%)'], [0.40,'hsl(26,61%,36%)'],
+    [0.32,'hsl(24,57%,30%)'], [0.25,'hsl(26,60%,40%)'],
+    [0.17,'hsl(27,62%,44%)'], [0.10,'hsl(27,61%,48%)'],
+  ];
+  rings.forEach(([f, col]) => {
+    const rr = f * r;
+    g.beginPath();
+    g.ellipse(ox, oy, rr * 0.87, rr, 0.16, 0, Math.PI * 2);
+    g.strokeStyle = col;
+    g.lineWidth = f > 0.5 ? 1.2 : 0.9;
+    g.stroke();
+  });
+
+  // radial grain cracks
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI;
+    for (let flip = 0; flip < 2; flip++) {
+      const ang = a + flip * Math.PI;
+      g.beginPath();
+      g.moveTo(ox, oy);
+      for (let s = 1; s <= 5; s++) {
+        const frac = s / 5;
+        const jx = (Math.random() - 0.5) * 2.8;
+        const jy = (Math.random() - 0.5) * 2.8;
+        g.lineTo(
+          ox + Math.cos(ang) * frac * r * 0.93 + jx,
+          oy + Math.sin(ang) * frac * r * 0.93 + jy
+        );
+      }
+      g.strokeStyle = 'rgba(26,9,2,0.20)';
+      g.lineWidth = 0.65;
+      g.stroke();
+    }
+  }
+
+  // subtle tone vignette
+  const tone = g.createRadialGradient(ox * 0.4, oy * 0.4, 0, ox, oy, r);
+  tone.addColorStop(0,   'rgba(215,148,78,0.10)');
+  tone.addColorStop(0.5, 'rgba(105,52,16,0.05)');
+  tone.addColorStop(1,   'rgba(0,0,0,0.24)');
+  g.fillStyle = tone;
+  g.fillRect(-r, -r, r * 2, r * 2);
+
+  g.restore();
+  return oc;
+}
+
+/* ══════════════════════════════════════════════════
+   BALL STATE
+   ══════════════════════════════════════════════════ */
+const ball = { x: 0, y: 0, vx: 3, vy: 0, r: 0, rot: 0 };
+
+/* ══════════════════════════════════════════════════
+   GRASS
+   ══════════════════════════════════════════════════ */
+const blades   = [];
+const bgBlades = [];
+
+function initGrass() {
+  blades.length   = 0;
+  bgBlades.length = 0;
+
+  // interactive foreground blades
+  const n = Math.floor(W / 4.3);
+  for (let i = 0; i < n; i++) {
+    const x   = (i + 0.5 + (Math.random() - 0.5) * 0.85) * (W / n);
+    const h   = 14 + Math.random() * 42;
+    const nat = (Math.random() - 0.5) * 0.27;
+    const hue = 88 + Math.random() * 40;
+    const sat = 40 + Math.random() * 30;
+    const lB  = 12 + Math.random() * 17;
+    blades.push({
+      x, h, nat,
+      angle:   nat,
+      vel:     0,
+      w:       1.0 + Math.random() * 2.0,
+      springK: 0.13 + Math.random() * 0.06,
+      damp:    0.66 + Math.random() * 0.07,
+      phase:   Math.random() * Math.PI * 2,
+      swayHz:  0.006 + Math.random() * 0.005,
+      bc: `hsl(${hue},${sat}%,${lB}%)`,
+      tc: `hsl(${hue + 9},${sat - 6}%,${lB + 17}%)`,
+    });
+  }
+
+  // distant background blades — no physics, pure sway
+  const nb = Math.floor(W / 7);
+  for (let i = 0; i < nb; i++) {
+    bgBlades.push({
+      x:     Math.random() * W,
+      h:     6 + Math.random() * 17,
+      angle: (Math.random() - 0.5) * 0.18,
+      nat:   (Math.random() - 0.5) * 0.18,
+      phase: Math.random() * Math.PI * 2,
+      color: `hsl(${100 + Math.random()*22},${30+Math.random()*14}%,${19+Math.random()*11}%)`,
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   DUST PARTICLES
+   ══════════════════════════════════════════════════ */
+const dust = [];
+function spawnDust(n) {
+  for (let i = 0; i < n; i++) {
+    dust.push({
+      x:    ball.x + (Math.random() - 0.5) * ball.r * 0.9,
+      y:    GY,
+      vx:   (Math.random() - 0.5) * 1.5 - ball.vx * 0.07,
+      vy:   -Math.random() * 1.7 - 0.35,
+      life: 1,
+      dec:  0.026 + Math.random() * 0.018,
+      r:    0.7 + Math.random() * 2.1,
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   INPUT
+   ══════════════════════════════════════════════════ */
+let dragging = false, lastPt = null;
+
+function pDown(x, y) { dragging = true; lastPt = {x, y}; }
+function pMove(x, y) {
+  if (!dragging || !lastPt) return;
+  const dvx = x - lastPt.x, dvy = y - lastPt.y;
+  lastPt = {x, y};
+  const dx = x - ball.x, dy = y - ball.y;
+  if (dx * dx + dy * dy < (ball.r * 3) ** 2) {
+    ball.vx += dvx * 0.40;
+    ball.vy += dvy * 0.40;
+  }
+}
+function pUp() { dragging = false; lastPt = null; }
+
+C.addEventListener('mousedown',  e => pDown(e.clientX, e.clientY));
+C.addEventListener('mousemove',  e => pMove(e.clientX, e.clientY));
+C.addEventListener('mouseup',    pUp);
+C.addEventListener('mouseleave', pUp);
+C.addEventListener('touchstart', e => { e.preventDefault(); pDown(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
+C.addEventListener('touchmove',  e => { e.preventDefault(); pMove(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
+C.addEventListener('touchend',   pUp);
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+});
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+/* ══════════════════════════════════════════════════
+   INITIALISE / RESIZE
+   ══════════════════════════════════════════════════ */
+function rebuild() {
+  ball.r  = Math.min(W, H) * 0.052;
+  ball.x  = W * 0.28;
+  ball.y  = GY - ball.r;
+  WOOD    = buildWood(ball.r);
+  initGrass();
+}
+rebuild();
+window.addEventListener('resize', () => { resize(); rebuild(); });
+
+/* ══════════════════════════════════════════════════
+   PHYSICS UPDATE
+   ══════════════════════════════════════════════════ */
+let tick = 0;
+
+function update() {
+  tick++;
+
+  // ── keyboard ──────────────────────────────────
+  if (keys['ArrowLeft']  || keys['a']) ball.vx -= 0.58;
+  if (keys['ArrowRight'] || keys['d']) ball.vx += 0.58;
+
+  // jump — only when on ground
+  const wasOnGround = ball.y + ball.r >= GY - 2;
+  if ((keys['ArrowUp'] || keys['w'] || keys[' ']) && wasOnGround) {
+    ball.vy = -13;
+    // grass pops outward on launch
+    const launchR = ball.r * 5;
+    for (const b of blades) {
+      const dist = Math.abs(b.x - ball.x);
+      if (dist < launchR) {
+        const str = (1 - dist / launchR) * 0.5;
+        b.vel += (b.x > ball.x ? 1 : -1) * str;
+      }
+    }
+  }
+
+  // ── gravity ───────────────────────────────────
+  ball.vy += 0.48;
+
+  // ── move ──────────────────────────────────────
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // speed cap
+  ball.vx = Math.max(-20, Math.min(20, ball.vx));
+
+  // ── ground collision ──────────────────────────
+  let onGround = false;
+  if (ball.y + ball.r >= GY) {
+    ball.y = GY - ball.r;
+    onGround = true;
+    const impact = ball.vy;
+    if (Math.abs(impact) > 2) {
+      ball.vy *= -0.28;
+      if (impact > 4) {
+        // shockwave through nearby grass
+        const reach = ball.r * 5 + impact * 1.6;
+        for (const b of blades) {
+          const dist = Math.abs(b.x - ball.x);
+          if (dist < reach) {
+            const str = (1 - dist / reach) * impact * 0.020;
+            b.vel += (b.x > ball.x ? 1 : -1) * str;
+          }
+        }
+        spawnDust(Math.min(Math.round(impact * 1.2), 12));
+      }
+    } else {
+      ball.vy = 0;
+    }
+  }
+
+  // ── friction ──────────────────────────────────
+  ball.vx *= onGround ? 0.974 : 0.9999;
+
+  // ── walls ─────────────────────────────────────
+  if (ball.x - ball.r < 0)  { ball.x = ball.r;     ball.vx =  Math.abs(ball.vx) * 0.38; }
+  if (ball.x + ball.r > W)  { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx) * 0.38; }
+
+  // ── rotation ──────────────────────────────────
+  ball.rot += ball.vx / ball.r;
+
+  // ── rolling dust ──────────────────────────────
+  if (onGround && Math.abs(ball.vx) > 1.4 && tick % 3 === 0) spawnDust(1);
+
+  // ── particles ─────────────────────────────────
+  for (let i = dust.length - 1; i >= 0; i--) {
+    const p = dust[i];
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += 0.07;
+    p.life -= p.dec;
+    if (p.life <= 0) dust.splice(i, 1);
+  }
+
+  // ── grass spring physics ───────────────────────
+  const INF  = 85 + ball.r;
+  const INF2 = INF * INF;
+  for (const b of blades) {
+    // gentle wind sway
+    const wind = Math.sin(tick * b.swayHz + b.phase) * 0.033;
+    let target = b.nat + wind;
+
+    // ball influence
+    const dx   = ball.x - b.x;
+    const midY = GY - b.h * 0.55;
+    const dy   = ball.y - midY;
+    const d2   = dx * dx + dy * dy;
+    if (d2 < INF2) {
+      const dist = Math.sqrt(d2);
+      const str  = Math.pow(1 - dist / INF, 1.7);
+      const dir  = b.x <= ball.x ? -1 : 1;
+      // velocity-weighted push (faster ball bends more)
+      const speed = Math.min(Math.abs(ball.vx), 12);
+      target = b.nat + dir * str * (1.4 + speed * 0.06);
+    }
+
+    const diff = target - b.angle;
+    b.vel    += diff * b.springK;
+    b.vel    *= b.damp;
+    b.angle  += b.vel;
+    b.angle   = Math.max(-1.48, Math.min(1.48, b.angle));
+  }
+
+  // ── background sway ───────────────────────────
+  for (const b of bgBlades) {
+    b.angle = b.nat + Math.sin(tick * 0.0054 + b.phase) * 0.055;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   RENDER
+   ══════════════════════════════════════════════════ */
+function drawFgBlade(b) {
+  const tx = b.x + Math.sin(b.angle) * b.h;
+  const ty = GY  - Math.cos(b.angle) * b.h;
+  const cx = b.x + Math.sin(b.angle) * b.h * 0.52;
+  const cy = GY  - Math.cos(b.angle) * b.h * 0.57;
+
+  const g = ctx.createLinearGradient(b.x, GY, tx, ty);
+  g.addColorStop(0, b.bc);
+  g.addColorStop(1, b.tc);
+
+  ctx.beginPath();
+  ctx.moveTo(b.x, GY);
+  ctx.quadraticCurveTo(cx, cy, tx, ty);
+  ctx.strokeStyle = g;
+  ctx.lineWidth   = b.w;
+  ctx.lineCap     = 'round';
+  ctx.stroke();
+}
+
+function drawBall() {
+  const { x, y, r, rot } = ball;
+  const sz = WOOD.width;
+
+  // ── ground shadow ──────────────────────────────
+  const air    = Math.max(0, GY - r - y);
+  const sAlpha = Math.max(0, 0.40 - air * 0.0040);
+  const sScale = Math.max(0.18, 1 - air * 0.006);
+  ctx.save();
+  ctx.translate(x, GY - 1);
+  ctx.scale(sScale, 0.21 * sScale);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(0,0,0,${sAlpha})`;
+  ctx.fill();
+  ctx.restore();
+
+  // ── rotating wood texture ──────────────────────
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.drawImage(WOOD, -sz / 2, -sz / 2);
+  ctx.restore();
+
+  // ── fixed lighting overlay ─────────────────────
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.clip();
+
+  const lit = ctx.createRadialGradient(-r * 0.30, -r * 0.36, 0, 0, 0, r);
+  lit.addColorStop(0,    'rgba(255,218,148,0.56)');
+  lit.addColorStop(0.28, 'rgba(218,158,76,0.14)');
+  lit.addColorStop(0.65, 'rgba(0,0,0,0)');
+  lit.addColorStop(1,    'rgba(0,0,0,0.60)');
+  ctx.fillStyle = lit;
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+
+  // specular glint
+  const sp = ctx.createRadialGradient(-r*0.27, -r*0.32, 0, -r*0.27, -r*0.32, r*0.15);
+  sp.addColorStop(0, 'rgba(255,253,220,0.76)');
+  sp.addColorStop(1, 'rgba(255,253,220,0)');
+  ctx.fillStyle = sp;
+  ctx.beginPath();
+  ctx.arc(-r * 0.27, -r * 0.32, r * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  // ── sky ───────────────────────────────────────
+  const sky = ctx.createLinearGradient(0, 0, 0, GY);
+  sky.addColorStop(0,   '#3388be');
+  sky.addColorStop(0.5, '#76c4de');
+  sky.addColorStop(1,   '#afd6a6');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, GY);
+
+  // ── distant hills ─────────────────────────────
+  const h1 = H * 0.10;
+  ctx.beginPath();
+  ctx.moveTo(0, GY);
+  ctx.bezierCurveTo(W*0.10, GY - h1*0.45, W*0.28, GY - h1,      W*0.43, GY - h1*0.62);
+  ctx.bezierCurveTo(W*0.57, GY - h1*0.28, W*0.70, GY - h1*0.92, W*0.86, GY - h1*0.48);
+  ctx.bezierCurveTo(W*0.93, GY - h1*0.18, W*0.97, GY - h1*0.04, W,      GY);
+  ctx.closePath();
+  ctx.fillStyle = '#3b6e30';
+  ctx.fill();
+
+  // ── background grass (faded, no interaction) ──
+  ctx.save();
+  ctx.globalAlpha = 0.48;
+  ctx.lineCap = 'round';
+  for (const b of bgBlades) {
+    const tx = b.x + Math.sin(b.angle) * b.h;
+    const ty = GY  - Math.cos(b.angle) * b.h;
+    ctx.beginPath();
+    ctx.moveTo(b.x, GY);
+    ctx.lineTo(tx, ty);
+    ctx.strokeStyle = b.color;
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // ── ground ────────────────────────────────────
+  const grd = ctx.createLinearGradient(0, GY, 0, H);
+  grd.addColorStop(0,   '#528944');
+  grd.addColorStop(0.1, '#306225');
+  grd.addColorStop(0.4, '#1f4119');
+  grd.addColorStop(1,   '#0d2009');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, GY, W, H - GY);
+
+  // ground-top highlight strip
+  ctx.beginPath();
+  ctx.moveTo(0, GY);
+  ctx.lineTo(W, GY);
+  ctx.strokeStyle = 'rgba(118,208,68,0.30)';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // ── foreground grass ──────────────────────────
+  // All blades drawn before ball. Bent/crushed blades
+  // visually read as being pushed down by the ball.
+  for (const b of blades) drawFgBlade(b);
+
+  // ── dust ──────────────────────────────────────
+  for (const p of dust) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(178,138,84,${p.life * 0.33})`;
+    ctx.fill();
+  }
+
+  // ── ball ──────────────────────────────────────
+  drawBall();
+}
+
+/* ══════════════════════════════════════════════════
+   LOOP
+   ══════════════════════════════════════════════════ */
+(function loop() {
+  update();
+  render();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
